@@ -70,3 +70,17 @@ System alerts provide immediate feedback on robot health and data integrity. The
 
 ### Output
 The script prints a summary report in the console and can export results to CSV/Excel. This makes it easy to compare raw vs. cleaned data and demonstrate improvements in reliability.
+
+## Maintenance Notes
+
+The maintenance notes module converts system alerts into actionable recommendations for operators. Instead of only flagging unsafe conditions, it provides human‑readable guidance that can be logged for long‑term reliability.
+
+### Example Rules
+- **Overheating** → "Inspect cooling system; possible overheating."
+- **Abnormal cold readings** → "Check sensor calibration; abnormal low reading."
+- **Excessive vibration** → "Inspect mechanical joints; possible instability."
+- **Unsafe orientation** → "Check axis control; unsafe tilt detected."
+- **Data integrity issues** → "Review sensor wiring/logging; data integrity issue."
+
+### Example Output
+If issues are detected:
