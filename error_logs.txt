@@ -1,0 +1,30 @@
+2025-12-06 18:13:32,176 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:14:43,952 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:14:44,445 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:15:12,458 - ERROR - Database insertion failed: Execution failed on sql '
+        SELECT
+            name
+        FROM
+            sqlite_master
+        WHERE
+            type IN ('table', 'view')
+            AND name=?;
+        ': file is not a database
+2025-12-06 18:15:59,485 - ERROR - Database insertion failed: table sensor_readings has no column named record_id
+2025-12-06 18:16:19,000 - ERROR - Database insertion failed: table sensor_readings has no column named record_id
+2025-12-06 18:16:49,704 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:17:28,555 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:18:01,978 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:19:48,458 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:19:59,344 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:21:33,227 - ERROR - Existing DB file invalid; moved to C:\Hackathon\robot_sensors.db.corrupt.20251206182133
+2025-12-06 18:21:33,229 - ERROR - First DB write attempt failed: duplicate column name: timestamp
+2025-12-06 18:21:33,230 - ERROR - Moved problematic DB to C:\Hackathon\robot_sensors.db.failed.20251206182133 and retrying
+2025-12-06 18:21:33,231 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:22:11,657 - ERROR - Existing DB file invalid; moved to C:\Hackathon\robot_sensors.db.corrupt.20251206182211
+2025-12-06 18:22:11,658 - ERROR - First DB write attempt failed: duplicate column name: timestamp
+2025-12-06 18:22:11,659 - ERROR - Moved problematic DB to C:\Hackathon\robot_sensors.db.failed.20251206182211 and retrying
+2025-12-06 18:22:11,659 - ERROR - Database insertion failed: duplicate column name: timestamp
+2025-12-06 18:23:08,181 - ERROR - Renamed duplicate columns for insertion (orig->new): {'record_id': 'record_id', 'Timestamp': 'timestamp_1', 'Temperature_C': 'temperature_c', 'Vibration_g': 'vibration_g', 'Axis1_deg': 'axis1_deg', 'Axis2_deg': 'axis2_deg', 'Axis3_deg': 'axis3_deg', 'timestamp': 'timestamp_2', 'status': 'status', 'confidence_flag': 'confidence_flag', 'notes': 'notes'}
+2025-12-06 18:23:08,182 - ERROR - Existing DB file invalid; moved to C:\Hackathon\robot_sensors.db.corrupt.20251206182308
+2025-12-06 18:23:36,142 - ERROR - Renamed duplicate columns for insertion (orig->new): {'record_id': 'record_id', 'Timestamp': 'timestamp_1', 'Temperature_C': 'temperature_c', 'Vibration_g': 'vibration_g', 'Axis1_deg': 'axis1_deg', 'Axis2_deg': 'axis2_deg', 'Axis3_deg': 'axis3_deg', 'timestamp': 'timestamp_2', 'status': 'status', 'confidence_flag': 'confidence_flag', 'notes': 'notes'}
