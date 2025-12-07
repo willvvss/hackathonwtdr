@@ -85,13 +85,20 @@ def save_uploaded_files(uploaded_files: list):
 
 
 def load_events_and_recs():
+    # Load structured events
     try:
         events = pd.read_csv(EVENTS_FILE)
     except FileNotFoundError:
         events = pd.DataFrame()
 
+    # Load AI recommendations
     try:
         recs = pd.read_csv(AI_RECOMMENDATIONS_FILE)
+        if not recs.empty and "event_id" in recs.columns:
+            # Clean and force event_id to plain int for reliable matching
+            recs["event_id"] = pd.to_numeric(
+                recs["event_id"], errors="coerce"
+            ).astype("Int64")
     except FileNotFoundError:
         recs = pd.DataFrame()
 
@@ -175,10 +182,8 @@ def generate_ai_recommendations(
             "OpenAI SDK not installed. Run `pip install openai` inside your venv."
         )
 
-    # Create client compatible with Azure's example:
-    # client = OpenAI(base_url="https://<resource>.openai.azure.com/openai/v1", api_key=...)
     client = OpenAI(
-        base_url=endpoint,
+        base_url=endpoint,  # e.g. "https://<resource>.openai.azure.com/openai/v1"
         api_key=api_key,
     )
 
@@ -186,7 +191,6 @@ def generate_ai_recommendations(
     if "severity" in events.columns:
         subset = events[events["severity"].isin(["high", "critical"])].copy()
         if subset.empty:
-            # fall back to all events if nothing is high/critical
             subset = events.copy()
     else:
         subset = events.copy()
@@ -207,11 +211,10 @@ def generate_ai_recommendations(
                     },
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.2,
+                # no temperature override for this deployment
             )
             content = resp.choices[0].message.content.strip()
         except Exception as e:
-            # On error, store a minimal fallback
             rec_rows.append(
                 {
                     "event_id": ev_id,
@@ -227,7 +230,6 @@ def generate_ai_recommendations(
             )
             continue
 
-        # Try to parse JSON; if it fails, put the raw content into diagnosis
         try:
             data = json.loads(content)
         except Exception:
@@ -294,112 +296,121 @@ def main():
     st.subheader("Structured Events")
     if events.empty:
         st.warning("No events found. Upload files and run the data pipeline.")
-    else:
-        st.dataframe(events)
+        return
 
-        # Event selection
-        selected_id = st.number_input(
-            "View event by ID",
-            min_value=1,
-            max_value=int(events["event_id"].max()),
-            step=1,
+    st.dataframe(events)
+
+    # Show which events have AI plans (nice for judges too)
+    if not recs.empty and "event_id" in recs.columns:
+        ai_ids = sorted(set(int(x) for x in recs["event_id"].dropna().tolist()))
+        st.markdown(f"**Events with AI maintenance plans:** {ai_ids}")
+    else:
+        st.markdown("**Events with AI maintenance plans:** none yet")
+
+    # Event selection
+    selected_id = st.number_input(
+        "View event by ID",
+        min_value=1,
+        max_value=int(events["event_id"].max()),
+        step=1,
+    )
+    selected_id_int = int(selected_id)
+
+    # show raw event info
+    ev = events[events["event_id"] == selected_id_int]
+    if not ev.empty:
+        eraw = ev.iloc[0]
+        st.markdown(f"### Event {int(eraw['event_id'])} – raw summary")
+        st.write(
+            f"Timestamp: {eraw.get('timestamp', 'N/A')}  \n"
+            f"Axis / location: {eraw.get('axis', 'N/A')} / {eraw.get('location', 'N/A')}  \n"
+            f"Collision type: {eraw.get('collision_type', 'N/A')}  \n"
+            f"Severity: {eraw.get('severity', 'N/A')}  \n"
+            f"Peak torque %: {eraw.get('peak_torque_pct', 'N/A')}  \n"
+            f"Alert: {eraw.get('alert_level', 'N/A')} / {eraw.get('alert_type', 'N/A')} – {eraw.get('alert_message', '')}  \n"
+            f"Last maintenance: {eraw.get('last_maintenance_task', 'N/A')} "
+            f"({eraw.get('days_since_last_maintenance', 'N/A')} days ago)"
         )
 
-        # show raw event info
-        ev = events[events["event_id"] == selected_id]
-        if not ev.empty:
-            eraw = ev.iloc[0]
-            st.markdown(f"### Event {int(eraw['event_id'])} – raw summary")
-            st.write(
-                f"Timestamp: {eraw.get('timestamp', 'N/A')}  \n"
-                f"Axis / location: {eraw.get('axis', 'N/A')} / {eraw.get('location', 'N/A')}  \n"
-                f"Collision type: {eraw.get('collision_type', 'N/A')}  \n"
-                f"Severity: {eraw.get('severity', 'N/A')}  \n"
-                f"Peak torque %: {eraw.get('peak_torque_pct', 'N/A')}  \n"
-                f"Alert: {eraw.get('alert_level', 'N/A')} / {eraw.get('alert_type', 'N/A')} – {eraw.get('alert_message', '')}  \n"
-                f"Last maintenance: {eraw.get('last_maintenance_task', 'N/A')} "
-                f"({eraw.get('days_since_last_maintenance', 'N/A')} days ago)"
-            )
+    # --- Azure OpenAI config ---
+    st.subheader("AI Maintenance Recommendations (Azure GPT)")
 
-        # --- Azure OpenAI config ---
-        st.subheader("AI Maintenance Recommendations (Azure GPT)")
+    default_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+    default_api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
+    default_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
 
-        # Defaults from .env
-        default_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        default_api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
-        default_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+    with st.expander("Azure OpenAI configuration", expanded=False):
+        endpoint = st.text_input(
+            "Azure OpenAI endpoint",
+            value=default_endpoint,
+            placeholder="https://<resource>.openai.azure.com/openai/v1",
+        )
+        api_key = st.text_input(
+            "Azure OpenAI API key",
+            type="password",
+            value=default_api_key,
+            placeholder="Enter your Azure OpenAI key",
+        )
+        deployment = st.text_input(
+            "Deployment name (e.g., gpt-5.1-chat)",
+            value=default_deployment,
+            placeholder="gpt-5.1-chat",
+        )
 
-        with st.expander("Azure OpenAI configuration", expanded=False):
-            endpoint = st.text_input(
-                "Azure OpenAI endpoint",
-                value=default_endpoint,
-                placeholder="https://<resource>.openai.azure.com/openai/v1",
-            )
-            api_key = st.text_input(
-                "Azure OpenAI API key",
-                type="password",
-                value=default_api_key,
-                placeholder="Enter your Azure OpenAI key",
-            )
-            deployment = st.text_input(
-                "Deployment name (e.g., gpt-5.1-chat)",
-                value=default_deployment,
-                placeholder="gpt-5.1-chat",
-            )
-
-        if st.button("Generate AI recommendations for events"):
-            if not endpoint or not api_key or not deployment:
-                st.error("Please fill in endpoint, API key, and deployment name.")
-            else:
-                try:
-                    with st.spinner("Calling Azure OpenAI to generate recommendations..."):
-                        recs = generate_ai_recommendations(
-                            events,
-                            endpoint=endpoint,
-                            api_key=api_key,
-                            deployment=deployment,
-                        )
-                    st.success(
-                        f"Generated {len(recs)} recommendations and saved to ai_recommendations.csv."
+    if st.button("Generate AI recommendations for events"):
+        if not endpoint or not api_key or not deployment:
+            st.error("Please fill in endpoint, API key, and deployment name.")
+        else:
+            try:
+                with st.spinner("Calling Azure OpenAI to generate recommendations..."):
+                    recs = generate_ai_recommendations(
+                        events,
+                        endpoint=endpoint,
+                        api_key=api_key,
+                        deployment=deployment,
                     )
-                except Exception as e:
-                    st.error(f"Error generating recommendations: {e}")
-
-        # --- Show AI recs for selected event ---
-        if not recs.empty:
-            er = recs[recs["event_id"] == selected_id]
-            if not er.empty:
-                er = er.iloc[0]
-                st.markdown(f"## AI Plan for Event {int(er['event_id'])}")
-                st.write(
-                    f"Axis: {er.get('axis', 'N/A')} | Severity: {er.get('severity', 'N/A')} | "
-                    f"Collision type: {er.get('collision_type', 'N/A')}"
+                st.success(
+                    f"Generated {len(recs)} recommendations and saved to ai_recommendations.csv."
                 )
+            except Exception as e:
+                st.error(f"Error generating recommendations: {e}")
 
-                st.markdown("### Diagnosis")
-                st.write(er.get("diagnosis", ""))
+    # --- Show AI recs for selected event ---
+    if not recs.empty and "event_id" in recs.columns:
+        er = recs[recs["event_id"] == selected_id_int]
+        if not er.empty:
+            er = er.iloc[0]
+            st.markdown(f"## AI Plan for Event {int(er['event_id'])}")
+            st.write(
+                f"Axis: {er.get('axis', 'N/A')} | Severity: {er.get('severity', 'N/A')} | "
+                f"Collision type: {er.get('collision_type', 'N/A')}"
+            )
 
-                st.markdown("### Inspection Steps")
-                st.text(er.get("inspection_steps", ""))
+            st.markdown("### Diagnosis")
+            st.write(er.get("diagnosis", ""))
 
-                st.markdown("### Maintenance Actions")
-                st.text(er.get("maintenance_actions", ""))
+            st.markdown("### Inspection Steps")
+            st.text(er.get("inspection_steps", ""))
 
-                st.markdown("### Safety Clearance")
-                st.text(er.get("safety_clearance", ""))
+            st.markdown("### Maintenance Actions")
+            st.text(er.get("maintenance_actions", ""))
 
-                st.markdown("### Return to Service")
-                st.text(er.get("return_to_service", ""))
-            else:
-                st.info(
-                    "No AI plan found for this event yet. "
-                    "Click 'Generate AI recommendations for events'."
-                )
+            st.markdown("### Safety Clearance")
+            st.text(er.get("safety_clearance", ""))
+
+            st.markdown("### Return to Service")
+            st.text(er.get("return_to_service", ""))
         else:
             st.info(
-                "No AI recommendations found. Configure Azure and click "
-                "'Generate AI recommendations for events'."
+                "No AI plan found for this event. "
+                "Either it is not high/critical severity or recommendations "
+                "have not been generated for this ID yet."
             )
+    else:
+        st.info(
+            "No AI recommendations found. Configure Azure and click "
+            "'Generate AI recommendations for events'."
+        )
 
 
 if __name__ == "__main__":
