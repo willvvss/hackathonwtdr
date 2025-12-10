@@ -213,7 +213,7 @@ def run_ai_analysis(events, endpoint, api_key, deployment):
 
 def main():
     st.set_page_config(page_title="CSI Bot Diagnostic", layout="wide")
-    st.title("🤖 CSI Hackathon: Robot Diagnostic Tool")
+    st.title("CSI Hackathon: Robot Diagnostic Tool")
 
     # Sidebar: File IO
     st.sidebar.header("1. Data Ingestion")
@@ -243,7 +243,7 @@ def main():
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Events", len(events))
     
-    # FIX 1: Count both High and Critical so this isn't 0
+    # Count both High and Critical so this isn't 0
     if "severity" in events.columns:
         critical_count = len(events[events['severity'].str.lower().isin(['critical', 'high'])])
     else:
@@ -253,8 +253,9 @@ def main():
     col3.metric("AI Recommendations", len(recs) if not recs.empty else 0)
 
     st.subheader("Event Log")
-    # FIX 2: use_container_width=True is the correct param for modern streamlit
-    st.dataframe(events, use_container_width=True)
+    
+    # FIX: Updated per error logs (use_container_width -> width="stretch")
+    st.dataframe(events, width="stretch")
 
     # Event Viewer
     st.divider()
