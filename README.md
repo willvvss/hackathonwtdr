@@ -9,7 +9,7 @@ This project is an intelligent **Robot Diagnostic Dashboard** designed to reduce
 ## Project Evolution
 
 **V1 (Hackathon Submission):**
-The code on branch `V1` represents our original hackathon finish. It was fully functional—successfully parsing raw data and querying the AI—but the web interface was complex and strictly utilitarian.
+The code on branch `V1` represents our original hackathon finish. It was fully functional, successfully parsing raw data and querying the AI, but the web interface was complex and strictly utilitarian.
 
 **V2 (Post-Hackathon Refinement):**
 We created `V2` to streamline the experience for recruiters and demos, focusing on clarity and ease of use:
