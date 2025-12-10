@@ -6,6 +6,17 @@
 
 This project is an intelligent **Robot Diagnostic Dashboard** designed to reduce downtime in manufacturing environments. It ingests raw, unstructured robot logs and telemetry data, structures them into a unified "Event History," and uses **Azure OpenAI (5.1)** to automatically generate actionable maintenance plans for critical collision events.
 
+## Project Evolution
+
+**V1 (Hackathon Submission):**
+The code on branch `V1` represents our original hackathon finish. It was fully functional—successfully parsing raw data and querying the AI—but the web interface was complex and strictly utilitarian.
+
+**V2 (Post-Hackathon Refinement):**
+We created `V2` to streamline the experience for recruiters and demos, focusing on clarity and ease of use:
+* **Critical Alert Buttons:** Added a "triage" control panel to instantly jump to severe errors.
+* **One-Click Pipeline:** Simplified the multi-step data ingestion process into a single button.
+* **Enhanced UI:** Redesigned the AI Maintenance Plan display to be cleaner and more visually accessible.
+
 ## Tech Stack
 
 **Frontend:** Streamlit (Python)  
