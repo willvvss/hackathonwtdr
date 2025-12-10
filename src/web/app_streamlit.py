@@ -31,6 +31,7 @@ except ImportError:
 # Mappings & Helpers
 # ------------------------------
 
+# Greg: mapped these based on the sample dataset filenames. 
 # If they change the filenames, this breaks.
 EXPECTED_FILES = {
     "error_logs": "error_logs.txt",
@@ -96,6 +97,7 @@ def load_data():
     return events, recs
 
 def build_prompt(row):
+    # This prompt seems to work best with GPT-4o, don't change the JSON structure part
     fields = {
         "event_id": int(row.get("event_id", -1)),
         "timestamp": str(row.get("timestamp", "")),
@@ -143,8 +145,9 @@ def run_ai_analysis(events, endpoint, api_key, deployment):
     client = OpenAI(base_url=endpoint, api_key=api_key)
 
     # Filter: Only send HIGH or CRITICAL severity to save API credits during testing
+    # Check for both "High" and "Critical" (case insensitive)
     if "severity" in events.columns:
-        subset = events[events["severity"].isin(["high", "critical"])].copy()
+        subset = events[events["severity"].str.lower().isin(["high", "critical"])].copy()
         if subset.empty:
             # Fallback if no high severity events exist
             subset = events.head(5) 
@@ -239,51 +242,62 @@ def main():
     # Top level metrics
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Events", len(events))
-    col2.metric("Critical Errors", len(events[events['severity'] == 'critical']))
+    
+    # FIX 1: Count both High and Critical so this isn't 0
+    if "severity" in events.columns:
+        critical_count = len(events[events['severity'].str.lower().isin(['critical', 'high'])])
+    else:
+        critical_count = 0
+    col2.metric("Critical / High Errors", critical_count)
+    
     col3.metric("AI Recommendations", len(recs) if not recs.empty else 0)
 
     st.subheader("Event Log")
-    st.dataframe(events, width=True)
+    # FIX 2: use_container_width=True is the correct param for modern streamlit
+    st.dataframe(events, use_container_width=True)
 
     # Event Viewer
     st.divider()
     st.subheader("Deep Dive & AI Analysis")
     
     # Select event ID
-    all_ids = sorted(events["event_id"].unique())
-    selected_id = st.selectbox("Select Event ID", all_ids)
-    
-    col_left, col_right = st.columns([1, 1])
-
-    with col_left:
-        ev = events[events["event_id"] == selected_id].iloc[0]
-        st.markdown(f"#### 📊 Raw Data (ID: {selected_id})")
-        st.write(f"**Timestamp:** {ev.get('timestamp')}")
-        st.write(f"**Axis:** {ev.get('axis')} ({ev.get('location')})")
-        st.write(f"**Severity:** {ev.get('severity')}")
-        st.write(f"**Alert:** {ev.get('alert_message')}")
-        st.code(ev.get('message_raw'), language="text")
-
-    with col_right:
-        st.markdown(f"#### 🧠 AI Maintenance Plan")
+    if not events.empty:
+        all_ids = sorted(events["event_id"].unique())
+        selected_id = st.selectbox("Select Event ID", all_ids)
         
-        # Check if we already have a rec for this ID
-        current_rec = pd.DataFrame()
-        if not recs.empty:
-            current_rec = recs[recs["event_id"] == selected_id]
+        col_left, col_right = st.columns([1, 1])
 
-        if not current_rec.empty:
-            r = current_rec.iloc[0]
-            with st.expander("Diagnosis", expanded=True):
-                st.info(r.get("diagnosis"))
-            with st.expander("Action Plan"):
-                st.write("**Inspection:**")
-                st.text(r.get("inspection_steps"))
-                st.write("**Fix:**")
-                st.text(r.get("maintenance_actions"))
-        else:
-            st.info("No AI analysis generated for this event yet.")
+        with col_left:
+            ev_subset = events[events["event_id"] == selected_id]
+            if not ev_subset.empty:
+                ev = ev_subset.iloc[0]
+                st.markdown(f"#### 📊 Raw Data (ID: {selected_id})")
+                st.write(f"**Timestamp:** {ev.get('timestamp')}")
+                st.write(f"**Axis:** {ev.get('axis')} ({ev.get('location')})")
+                st.write(f"**Severity:** {ev.get('severity')}")
+                st.write(f"**Alert:** {ev.get('alert_message')}")
+                st.code(ev.get('message_raw'), language="text")
 
+        with col_right:
+            st.markdown(f"#### 🧠 AI Maintenance Plan")
+            
+            # Check if we already have a rec for this ID
+            current_rec = pd.DataFrame()
+            if not recs.empty:
+                current_rec = recs[recs["event_id"] == selected_id]
+
+            if not current_rec.empty:
+                r = current_rec.iloc[0]
+                with st.expander("Diagnosis", expanded=True):
+                    st.info(r.get("diagnosis"))
+                with st.expander("Action Plan"):
+                    st.write("**Inspection:**")
+                    st.text(r.get("inspection_steps"))
+                    st.write("**Fix:**")
+                    st.text(r.get("maintenance_actions"))
+            else:
+                st.info("No AI analysis generated for this event yet.")
+    
     # Azure Config Section (Bottom)
     st.divider()
     with st.expander("⚙️ Admin / API Settings"):
