@@ -1,8 +1,8 @@
 # CSI Hackathon – Robot Collision Diagnostic Tool
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://hackathonwtdr.streamlit.app/)
-
 **Team:** Trever Fuhrer | Will Vogt | Priyansh Dhiman | Arshdeep Singh
+
+### 🚀 [View Live Demo](https://hackathonwtdr.streamlit.app/)
 
 ## Overview
 
