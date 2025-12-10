@@ -1,0 +1,80 @@
+[09:18:37] SRVO-324 Collision detected
+2025-11-17 09:59:45 - SRVO-005: Torque limit reached
+[09:03:51] TEMP-100 Singularity condition
+MOTN-019 - Fence open
+2025-11-17 09:14:38 - SRVO-160: Torque limit reached
+2025-11-17 09:19:39 - TEMP-100: Singularity condition
+2025/11/17 09:03 TEMP-100 - Overtravel
+2025/11/17 09:11 MOTN-019 - Battery Zero Alarm
+INTP-105,Run request failed
+SRVO-161,Run request failed
+SRVO-161,E-stop pressed
+INTP-105 - Battery Zero Alarm
+[09:17:48] SRVO-062 Torque limit reached
+2025-11-17 09:53:42 - SRVO-160: Torque limit reached
+SRVO-160 - Collision detected
+INTP-105 - Collision detected
+PROG-048 - Shift released
+INTP-105,Run request failed
+SRVO-062 - Fence open
+2025/11/17 09:27 TEMP-100 - E-stop pressed
+2025-11-17 09:37:46 - SRVO-050: Battery Zero Alarm
+2025-11-17 09:30:33 - SRVO-160: Shift released
+2025/11/17 09:32 SRVO-160 - Battery Zero Alarm
+2025/11/17 09:34 SRVO-005 - Battery Zero Alarm
+[09:18:02] TEMP-100 Singularity condition
+SRVO-324 - Collision detected
+SRVO-050 - Joint overheat
+MOTN-019,Shift released
+2025-11-17 09:56:53 - SRVO-161: E-stop pressed
+[09:43:04] TEMP-100 E-stop pressed
+[09:33:36] SRVO-005 Joint overheat
+2025-11-17 09:33:11 - PROG-048: Collision detected
+SRVO-161,Battery Zero Alarm
+SRVO-005 - E-stop pressed
+[09:05:53] SRVO-160 Singularity condition
+SRVO-324,Run request failed
+[09:54:32] SRVO-160 Torque limit reached
+SRVO-050 - Overtravel
+SRVO-160,Shift released
+[09:09:54] SRVO-005 Fence open
+SRVO-160 - Collision detected
+SRVO-062 - Joint overheat
+2025-11-17 09:48:51 - SRVO-050: Torque limit reached
+SRVO-062 - Shift released
+2025/11/17 09:45 TEMP-100 - Shift released
+SRVO-062,Shift released
+[09:11:07] SRVO-050 Battery Zero Alarm
+2025-11-17 09:55:31 - SRVO-062: Shift released
+2025/11/17 09:14 TEMP-100 - E-stop pressed
+2025-11-17 09:23:51 - SRVO-005: Overtravel
+SRVO-062 - E-stop pressed
+PROG-048,Overtravel
+INTP-105 - E-stop pressed
+2025-11-17 09:37:13 - PROG-048: Joint overheat
+TEMP-100,Collision detected
+[09:32:23] SRVO-050 Overtravel
+SRVO-161 - Torque limit reached
+2025/11/17 09:45 SRVO-005 - Singularity condition
+[09:11:31] SRVO-062 Overtravel
+SRVO-160,Torque limit reached
+SRVO-161,Battery Zero Alarm
+2025-11-17 09:09:32 - SRVO-161: Run request failed
+[09:48:18] PROG-048 Fence open
+2025/11/17 09:07 SRVO-160 - Shift released
+2025-11-17 09:57:00 - SRVO-160: Shift released
+[09:09:02] TEMP-100 Singularity condition
+2025/11/17 09:41 SRVO-050 - Fence open
+TEMP-100 - Torque limit reached
+2025/11/17 09:10 SRVO-005 - Run request failed
+2025/11/17 09:59 SRVO-161 - Collision detected
+2025/11/17 09:12 SRVO-050 - Shift released
+2025/11/17 09:23 SRVO-005 - Joint overheat
+2025/11/17 09:17 SRVO-160 - Torque limit reached
+SRVO-062,Joint overheat
+2025/11/17 09:29 INTP-105 - Shift released
+2025/11/17 09:16 SRVO-160 - Overtravel
+SRVO-161,Collision detected
+2025/11/17 09:05 MOTN-019 - Shift released
+SRVO-050,Singularity condition
+INTP-105 - Collision detected

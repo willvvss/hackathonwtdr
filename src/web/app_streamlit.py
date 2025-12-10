@@ -31,8 +31,6 @@ except ImportError:
 # Mappings & Helpers
 # ------------------------------
 
-# Greg: mapped these based on the sample dataset filenames. 
-# If they change the filenames, this breaks.
 EXPECTED_FILES = {
     "error_logs": "error_logs.txt",
     "system_alerts": "system_alerts.txt",
@@ -44,7 +42,6 @@ EXPECTED_FILES = {
 }
 
 def save_uploaded_files(uploaded_files):
-    # Dumps files into data_raw/ so the pipeline can find them
     if not uploaded_files:
         return []
 
@@ -53,7 +50,6 @@ def save_uploaded_files(uploaded_files):
         name_lower = uf.name.lower()
         mapped_name = None
         
-        # super basic string matching bc regex was acting up
         if "error" in name_lower and "log" in name_lower:
             mapped_name = EXPECTED_FILES["error_logs"]
         elif "alert" in name_lower:
@@ -69,7 +65,6 @@ def save_uploaded_files(uploaded_files):
         elif "perf" in name_lower:
             mapped_name = EXPECTED_FILES["performance_metrics"]
 
-        # Default to original name if we can't guess it
         final_name = mapped_name if mapped_name else uf.name
         out_path = RAW_DIR / final_name
         
@@ -80,7 +75,6 @@ def save_uploaded_files(uploaded_files):
     return saved
 
 def load_data():
-    # just a wrapper to load the csvs safely
     try:
         events = pd.read_csv(EVENTS_FILE)
     except FileNotFoundError:
@@ -88,7 +82,6 @@ def load_data():
 
     try:
         recs = pd.read_csv(AI_RECOMMENDATIONS_FILE)
-        # make sure event_id matches the other dataframe
         if not recs.empty and "event_id" in recs.columns:
             recs["event_id"] = pd.to_numeric(recs["event_id"], errors="coerce").astype("Int64")
     except FileNotFoundError:
@@ -97,7 +90,6 @@ def load_data():
     return events, recs
 
 def build_prompt(row):
-    # This prompt seems to work best with GPT-4o, don't change the JSON structure part
     fields = {
         "event_id": int(row.get("event_id", -1)),
         "timestamp": str(row.get("timestamp", "")),
@@ -144,12 +136,9 @@ def run_ai_analysis(events, endpoint, api_key, deployment):
 
     client = OpenAI(base_url=endpoint, api_key=api_key)
 
-    # Filter: Only send HIGH or CRITICAL severity to save API credits during testing
-    # Check for both "High" and "Critical" (case insensitive)
     if "severity" in events.columns:
         subset = events[events["severity"].str.lower().isin(["high", "critical"])].copy()
         if subset.empty:
-            # Fallback if no high severity events exist
             subset = events.head(5) 
     else:
         subset = events.head(5)
@@ -172,13 +161,11 @@ def run_ai_analysis(events, endpoint, api_key, deployment):
             )
             content = resp.choices[0].message.content.strip()
             
-            # sometimes the model wraps json in ```json ... ```
             if content.startswith("```"):
                 content = content.replace("```json", "").replace("```", "")
             
             data = json.loads(content)
         except Exception as e:
-            # If it fails, just fill empty so the UI doesn't crash
             data = {
                 "event_id": ev_id,
                 "diagnosis": f"AI Error: {str(e)}",
@@ -188,7 +175,6 @@ def run_ai_analysis(events, endpoint, api_key, deployment):
                 "return_to_service": "N/A"
             }
 
-        # Merge original fields for display
         output = {
             "event_id": int(data.get("event_id", ev_id)),
             "axis": row.get("axis"),
@@ -213,7 +199,12 @@ def run_ai_analysis(events, endpoint, api_key, deployment):
 
 def main():
     st.set_page_config(page_title="CSI Bot Diagnostic", layout="wide")
-    st.title("CSI Hackathon: Robot Diagnostic Tool")
+    st.title("🤖 CSI Hackathon: Robot Diagnostic Tool")
+
+    # Load Env Vars up front so they are ready for the pipeline button
+    default_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+    default_api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
+    default_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 
     # Sidebar: File IO
     st.sidebar.header("1. Data Ingestion")
@@ -227,10 +218,21 @@ def main():
         saved_paths = save_uploaded_files(uploaded_files)
         st.sidebar.success(f"Loaded {len(saved_paths)} files.")
 
-    if st.sidebar.button("Run ETL Pipeline"):
-        with st.spinner("Parsing logs..."):
+    # CHANGED: "Run Full Pipeline" now triggers ETL -> then AI automatically
+    if st.sidebar.button("Run Full Pipeline (ETL + AI)"):
+        # 1. Run Data Parsing
+        with st.spinner("Parsing logs and building event history..."):
             run_pipeline_main()
-        st.sidebar.success("Done! Events rebuilt.")
+        
+        # 2. Automatically Run AI (if keys exist)
+        if default_api_key:
+            with st.spinner("Pipeline finished. Now generating AI maintenance plans..."):
+                # We need to reload events from disk because run_pipeline_main just updated them
+                fresh_events = pd.read_csv(EVENTS_FILE)
+                run_ai_analysis(fresh_events, default_endpoint, default_api_key, default_deployment)
+            st.sidebar.success("Done! Events & AI Plans generated.")
+        else:
+            st.sidebar.warning("ETL finished, but skipped AI (Missing API Key).")
 
     # Main Area
     events, recs = load_data()
@@ -243,7 +245,6 @@ def main():
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Events", len(events))
     
-    # Count both High and Critical so this isn't 0
     if "severity" in events.columns:
         critical_count = len(events[events['severity'].str.lower().isin(['critical', 'high'])])
     else:
@@ -253,8 +254,7 @@ def main():
     col3.metric("AI Recommendations", len(recs) if not recs.empty else 0)
 
     st.subheader("Event Log")
-    
-    # FIX: Updated per error logs (use_container_width -> width="stretch")
+    # Updated to width="stretch" per recent Streamlit warning
     st.dataframe(events, width="stretch")
 
     # Event Viewer
@@ -301,14 +301,14 @@ def main():
     
     # Azure Config Section (Bottom)
     st.divider()
-    with st.expander("⚙️ Admin / API Settings"):
+    with st.expander("⚙️ Admin / Manual API Override"):
         c1, c2, c3 = st.columns(3)
-        # Defaults from .env so we don't have to type it every time
-        endpoint = c1.text_input("Endpoint", value=os.getenv("AZURE_OPENAI_ENDPOINT", ""))
-        api_key = c2.text_input("Key", type="password", value=os.getenv("AZURE_OPENAI_API_KEY", ""))
-        deployment = c3.text_input("Deployment", value=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"))
+        endpoint = c1.text_input("Endpoint", value=default_endpoint)
+        api_key = c2.text_input("Key", type="password", value=default_api_key)
+        deployment = c3.text_input("Deployment", value=default_deployment)
 
-        if st.button("Generate New Recommendations (High Severity Only)"):
+        # Kept this button just in case you want to re-run ONLY the AI without parsing logs again
+        if st.button("Re-generate AI Plans (Manual)"):
             if not api_key:
                 st.error("Need API Key!")
             else:
