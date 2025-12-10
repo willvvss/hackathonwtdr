@@ -2,14 +2,14 @@ import sys
 from pathlib import Path
 import json
 import os
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
+
+# messy path fix to make imports work on everyone's laptop
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from src.config import (
     RAW_DIR,
@@ -18,20 +18,20 @@ from src.config import (
 )
 from src.run_pipeline import main as run_pipeline_main
 
-# Load .env at startup
 load_dotenv()
 
-# Try to import OpenAI client
+# Hopefully this doesn't break on the demo machine
 try:
     from openai import OpenAI
 except ImportError:
     OpenAI = None
-
+    print("WARNING: openai not installed, AI features won't work")
 
 # ------------------------------
-# Helpers
+# Mappings & Helpers
 # ------------------------------
 
+# If they change the filenames, this breaks.
 EXPECTED_FILES = {
     "error_logs": "error_logs.txt",
     "system_alerts": "system_alerts.txt",
@@ -42,21 +42,17 @@ EXPECTED_FILES = {
     "performance_metrics": "performance_metrics.csv",
 }
 
-
-def save_uploaded_files(uploaded_files: list):
-    """
-    Save uploaded raw files into data_raw/ using the names expected
-    by the pipeline. We match by simple substrings in the filename.
-    """
+def save_uploaded_files(uploaded_files):
+    # Dumps files into data_raw/ so the pipeline can find them
     if not uploaded_files:
         return []
 
     saved = []
     for uf in uploaded_files:
         name_lower = uf.name.lower()
-
         mapped_name = None
-        # crude but effective matching by substring
+        
+        # super basic string matching bc regex was acting up
         if "error" in name_lower and "log" in name_lower:
             mapped_name = EXPECTED_FILES["error_logs"]
         elif "alert" in name_lower:
@@ -69,349 +65,242 @@ def save_uploaded_files(uploaded_files: list):
             mapped_name = EXPECTED_FILES["torque_timeseries"]
         elif "event" in name_lower and "cycle" in name_lower:
             mapped_name = EXPECTED_FILES["torque_cycles"]
-        elif "perf" in name_lower or "performance" in name_lower:
+        elif "perf" in name_lower:
             mapped_name = EXPECTED_FILES["performance_metrics"]
 
-        # If we couldn't guess, just keep original name
-        if mapped_name is None:
-            mapped_name = uf.name
-
-        out_path = RAW_DIR / mapped_name
+        # Default to original name if we can't guess it
+        final_name = mapped_name if mapped_name else uf.name
+        out_path = RAW_DIR / final_name
+        
         with out_path.open("wb") as f:
             f.write(uf.getbuffer())
         saved.append(out_path)
 
     return saved
 
-
-def load_events_and_recs():
-    # Load structured events
+def load_data():
+    # just a wrapper to load the csvs safely
     try:
         events = pd.read_csv(EVENTS_FILE)
     except FileNotFoundError:
         events = pd.DataFrame()
 
-    # Load AI recommendations
     try:
         recs = pd.read_csv(AI_RECOMMENDATIONS_FILE)
+        # make sure event_id matches the other dataframe
         if not recs.empty and "event_id" in recs.columns:
-            # Clean and force event_id to plain int for reliable matching
-            recs["event_id"] = pd.to_numeric(
-                recs["event_id"], errors="coerce"
-            ).astype("Int64")
+            recs["event_id"] = pd.to_numeric(recs["event_id"], errors="coerce").astype("Int64")
     except FileNotFoundError:
         recs = pd.DataFrame()
 
     return events, recs
 
-
-def build_prompt_for_event(row: pd.Series) -> str:
-    """
-    Build a text prompt describing one event for the LLM.
-    """
+def build_prompt(row):
     fields = {
         "event_id": int(row.get("event_id", -1)),
         "timestamp": str(row.get("timestamp", "")),
-        "axis": int(row.get("axis", 0)) if pd.notna(row.get("axis", None)) else 0,
+        "axis": int(row.get("axis", 0)),
         "location": str(row.get("location", "")),
         "collision_type": str(row.get("collision_type", "")),
         "severity": str(row.get("severity", "")),
-        "peak_torque_pct": float(row.get("peak_torque_pct", 0.0))
-        if pd.notna(row.get("peak_torque_pct", None))
-        else 0.0,
-        "force_value": float(row.get("force_value", 0.0)),
-        "repeats_24h": int(row.get("repeats_24h", 0))
-        if pd.notna(row.get("repeats_24h", None))
-        else 0,
-        "alert_level": str(row.get("alert_level", "")),
-        "alert_type": str(row.get("alert_type", "")),
-        "alert_message": str(row.get("alert_message", "")),
-        "last_maintenance_task": str(row.get("last_maintenance_task", "")),
-        "days_since_last_maintenance": int(row.get("days_since_last_maintenance", 0))
-        if pd.notna(row.get("days_since_last_maintenance", None))
-        else None,
-        "message_raw": str(row.get("message_raw", "")),
+        "peak_torque": float(row.get("peak_torque_pct", 0.0)),
+        "alert_msg": str(row.get("alert_message", "")),
+        "last_maint": str(row.get("last_maintenance_task", "")),
+        "raw_msg": str(row.get("message_raw", "")),
     }
 
-    prompt = f"""
-You are an expert robotics reliability engineer. You will receive a single robot collision or near-miss event
-with context. Produce a structured maintenance recommendation in JSON ONLY, no extra text.
+    return f"""
+You are a senior robotics reliability engineer. 
+Analyze this collision event and provide a maintenance plan in JSON ONLY.
 
-Event details:
-- event_id: {fields['event_id']}
-- timestamp: {fields['timestamp']}
-- axis / joint: {fields['axis']} (location: {fields['location']})
-- collision_type: {fields['collision_type']}
-- severity: {fields['severity']}
-- peak_torque_pct_of_rated: {fields['peak_torque_pct']}
-- force_value_proxy: {fields['force_value']}
-- repeats_24h_same_code_and_axis: {fields['repeats_24h']}
-- alert_level: {fields['alert_level']}
-- alert_type: {fields['alert_type']}
-- alert_message: {fields['alert_message']}
-- last_maintenance_task: {fields['last_maintenance_task']}
-- days_since_last_maintenance: {fields['days_since_last_maintenance']}
-- raw_error_message: {fields['message_raw']}
+Context:
+- ID: {fields['event_id']}
+- Time: {fields['timestamp']}
+- Joint: {fields['axis']} ({fields['location']})
+- Type: {fields['collision_type']} (Severity: {fields['severity']})
+- Peak Torque: {fields['peak_torque']}% of rated
+- Alert: {fields['alert_msg']}
+- Last Maintenance: {fields['last_maint']}
+- Raw Log: {fields['raw_msg']}
 
-Output a JSON object with exactly these keys:
-- "event_id" (int)
-- "diagnosis" (string)
-- "inspection_steps" (string, bullet-style with line breaks)
-- "maintenance_actions" (string, bullet-style with line breaks)
-- "safety_clearance" (string, bullet-style with line breaks)
-- "return_to_service" (string, bullet-style with line breaks)
-
-Keep it concise but specific to this joint and event history.
+Response Format (JSON):
+{{
+    "event_id": {fields['event_id']},
+    "diagnosis": "brief technical explanation",
+    "inspection_steps": "bullet points with line breaks",
+    "maintenance_actions": "bullet points with line breaks",
+    "safety_clearance": "bullet points",
+    "return_to_service": "steps to restart"
+}}
+Keep it concise.
 """
-    return prompt.strip()
 
-
-def generate_ai_recommendations(
-    events: pd.DataFrame,
-    endpoint: str,
-    api_key: str,
-    deployment: str,
-) -> pd.DataFrame:
-    """
-    Call Azure OpenAI (using OpenAI client with base_url) for each relevant event
-    and save ai_recommendations.csv.
-    """
-
+def run_ai_analysis(events, endpoint, api_key, deployment):
     if OpenAI is None:
-        raise RuntimeError(
-            "OpenAI SDK not installed. Run `pip install openai` inside your venv."
-        )
+        st.error("OpenAI lib missing! pip install openai")
+        return pd.DataFrame()
 
-    client = OpenAI(
-        base_url=endpoint,  # e.g. "https://<resource>.openai.azure.com/openai/v1"
-        api_key=api_key,
-    )
+    client = OpenAI(base_url=endpoint, api_key=api_key)
 
-    # focus on the most important events
+    # Filter: Only send HIGH or CRITICAL severity to save API credits during testing
     if "severity" in events.columns:
         subset = events[events["severity"].isin(["high", "critical"])].copy()
         if subset.empty:
-            subset = events.copy()
+            # Fallback if no high severity events exist
+            subset = events.head(5) 
     else:
-        subset = events.copy()
+        subset = events.head(5)
 
     rec_rows = []
+    progress_bar = st.progress(0)
+    total = len(subset)
 
-    for _, row in subset.iterrows():
+    for i, (_, row) in enumerate(subset.iterrows()):
         ev_id = int(row["event_id"])
-        prompt = build_prompt_for_event(row)
+        prompt = build_prompt(row)
 
         try:
             resp = client.chat.completions.create(
-                model=deployment,  # deployment name, e.g. "gpt-5.1-chat"
+                model=deployment,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a senior robotics maintenance engineer. Respond in JSON only.",
-                    },
+                    {"role": "system", "content": "You are a robotics engineer. JSON output only."},
                     {"role": "user", "content": prompt},
-                ],
-                # no temperature override for this deployment
+                ]
             )
             content = resp.choices[0].message.content.strip()
-        except Exception as e:
-            rec_rows.append(
-                {
-                    "event_id": ev_id,
-                    "axis": row.get("axis"),
-                    "severity": row.get("severity"),
-                    "collision_type": row.get("collision_type"),
-                    "diagnosis": f"Error calling Azure OpenAI: {e}",
-                    "inspection_steps": "",
-                    "maintenance_actions": "",
-                    "safety_clearance": "",
-                    "return_to_service": "",
-                }
-            )
-            continue
-
-        try:
+            
+            # sometimes the model wraps json in ```json ... ```
+            if content.startswith("```"):
+                content = content.replace("```json", "").replace("```", "")
+            
             data = json.loads(content)
-        except Exception:
+        except Exception as e:
+            # If it fails, just fill empty so the UI doesn't crash
             data = {
                 "event_id": ev_id,
-                "diagnosis": content,
-                "inspection_steps": "",
-                "maintenance_actions": "",
-                "safety_clearance": "",
-                "return_to_service": "",
+                "diagnosis": f"AI Error: {str(e)}",
+                "inspection_steps": "N/A", 
+                "maintenance_actions": "N/A",
+                "safety_clearance": "N/A",
+                "return_to_service": "N/A"
             }
 
-        rec_rows.append(
-            {
-                "event_id": int(data.get("event_id", ev_id)),
-                "axis": row.get("axis"),
-                "severity": row.get("severity"),
-                "collision_type": row.get("collision_type"),
-                "diagnosis": data.get("diagnosis", ""),
-                "inspection_steps": data.get("inspection_steps", ""),
-                "maintenance_actions": data.get("maintenance_actions", ""),
-                "safety_clearance": data.get("safety_clearance", ""),
-                "return_to_service": data.get("return_to_service", ""),
-            }
-        )
+        # Merge original fields for display
+        output = {
+            "event_id": int(data.get("event_id", ev_id)),
+            "axis": row.get("axis"),
+            "severity": row.get("severity"),
+            "collision_type": row.get("collision_type"),
+            "diagnosis": data.get("diagnosis", ""),
+            "inspection_steps": data.get("inspection_steps", ""),
+            "maintenance_actions": data.get("maintenance_actions", ""),
+            "safety_clearance": data.get("safety_clearance", ""),
+            "return_to_service": data.get("return_to_service", ""),
+        }
+        rec_rows.append(output)
+        progress_bar.progress((i + 1) / total)
 
     rec_df = pd.DataFrame(rec_rows)
     rec_df.to_csv(AI_RECOMMENDATIONS_FILE, index=False)
     return rec_df
 
-
 # ------------------------------
-# Streamlit App
+# Streamlit UI
 # ------------------------------
 
 def main():
-    st.title("CSI Hackathon – Robot Collision Diagnostic Tool")
+    st.set_page_config(page_title="CSI Bot Diagnostic", layout="wide")
+    st.title("🤖 CSI Hackathon: Robot Diagnostic Tool")
 
-    # --- Sidebar: File upload + pipeline ---
-    st.sidebar.header("1. Upload raw data files")
-
+    # Sidebar: File IO
+    st.sidebar.header("1. Data Ingestion")
     uploaded_files = st.sidebar.file_uploader(
-        "Upload robot logs / alerts / maintenance / torque CSVs",
+        "Upload Logs/CSVs",
         type=["txt", "csv"],
         accept_multiple_files=True,
     )
 
     if uploaded_files:
         saved_paths = save_uploaded_files(uploaded_files)
-        st.sidebar.success(
-            f"Saved {len(saved_paths)} files into data_raw/. "
-            "You can now run the data pipeline."
-        )
+        st.sidebar.success(f"Loaded {len(saved_paths)} files.")
 
-    st.sidebar.header("2. Run data pipeline")
-    if st.sidebar.button("Run data pipeline"):
-        with st.spinner("Running parsing + event builder pipeline..."):
+    if st.sidebar.button("Run ETL Pipeline"):
+        with st.spinner("Parsing logs..."):
             run_pipeline_main()
-        st.sidebar.success("Pipeline complete. Events have been rebuilt.")
+        st.sidebar.success("Done! Events rebuilt.")
 
-    # --- Main data display ---
-    events, recs = load_events_and_recs()
+    # Main Area
+    events, recs = load_data()
 
-    st.subheader("Structured Events")
     if events.empty:
-        st.warning("No events found. Upload files and run the data pipeline.")
+        st.warning("⚠️ No event data found. Please upload files and run the pipeline.")
         return
 
-    st.dataframe(events)
+    # Top level metrics
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Events", len(events))
+    col2.metric("Critical Errors", len(events[events['severity'] == 'critical']))
+    col3.metric("AI Recommendations", len(recs) if not recs.empty else 0)
 
-    # Show which events have AI plans (nice for judges too)
-    if not recs.empty and "event_id" in recs.columns:
-        ai_ids = sorted(set(int(x) for x in recs["event_id"].dropna().tolist()))
-        st.markdown(f"**Events with AI maintenance plans:** {ai_ids}")
-    else:
-        st.markdown("**Events with AI maintenance plans:** none yet")
+    st.subheader("Event Log")
+    st.dataframe(events, use_container_width=True)
 
-    # Event selection
-    selected_id = st.number_input(
-        "View event by ID",
-        min_value=1,
-        max_value=int(events["event_id"].max()),
-        step=1,
-    )
-    selected_id_int = int(selected_id)
+    # Event Viewer
+    st.divider()
+    st.subheader("Deep Dive & AI Analysis")
+    
+    # Select event ID
+    all_ids = sorted(events["event_id"].unique())
+    selected_id = st.selectbox("Select Event ID", all_ids)
+    
+    col_left, col_right = st.columns([1, 1])
 
-    # show raw event info
-    ev = events[events["event_id"] == selected_id_int]
-    if not ev.empty:
-        eraw = ev.iloc[0]
-        st.markdown(f"### Event {int(eraw['event_id'])} – raw summary")
-        st.write(
-            f"Timestamp: {eraw.get('timestamp', 'N/A')}  \n"
-            f"Axis / location: {eraw.get('axis', 'N/A')} / {eraw.get('location', 'N/A')}  \n"
-            f"Collision type: {eraw.get('collision_type', 'N/A')}  \n"
-            f"Severity: {eraw.get('severity', 'N/A')}  \n"
-            f"Peak torque %: {eraw.get('peak_torque_pct', 'N/A')}  \n"
-            f"Alert: {eraw.get('alert_level', 'N/A')} / {eraw.get('alert_type', 'N/A')} – {eraw.get('alert_message', '')}  \n"
-            f"Last maintenance: {eraw.get('last_maintenance_task', 'N/A')} "
-            f"({eraw.get('days_since_last_maintenance', 'N/A')} days ago)"
-        )
+    with col_left:
+        ev = events[events["event_id"] == selected_id].iloc[0]
+        st.markdown(f"#### 📊 Raw Data (ID: {selected_id})")
+        st.write(f"**Timestamp:** {ev.get('timestamp')}")
+        st.write(f"**Axis:** {ev.get('axis')} ({ev.get('location')})")
+        st.write(f"**Severity:** {ev.get('severity')}")
+        st.write(f"**Alert:** {ev.get('alert_message')}")
+        st.code(ev.get('message_raw'), language="text")
 
-    # --- Azure OpenAI config ---
-    st.subheader("AI Maintenance Recommendations (Azure GPT)")
+    with col_right:
+        st.markdown(f"#### 🧠 AI Maintenance Plan")
+        
+        # Check if we already have a rec for this ID
+        current_rec = pd.DataFrame()
+        if not recs.empty:
+            current_rec = recs[recs["event_id"] == selected_id]
 
-    default_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-    default_api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
-    default_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
-
-    with st.expander("Azure OpenAI configuration", expanded=False):
-        endpoint = st.text_input(
-            "Azure OpenAI endpoint",
-            value=default_endpoint,
-            placeholder="https://<resource>.openai.azure.com/openai/v1",
-        )
-        api_key = st.text_input(
-            "Azure OpenAI API key",
-            type="password",
-            value=default_api_key,
-            placeholder="Enter your Azure OpenAI key",
-        )
-        deployment = st.text_input(
-            "Deployment name (e.g., gpt-5.1-chat)",
-            value=default_deployment,
-            placeholder="gpt-5.1-chat",
-        )
-
-    if st.button("Generate AI recommendations for events"):
-        if not endpoint or not api_key or not deployment:
-            st.error("Please fill in endpoint, API key, and deployment name.")
+        if not current_rec.empty:
+            r = current_rec.iloc[0]
+            with st.expander("Diagnosis", expanded=True):
+                st.info(r.get("diagnosis"))
+            with st.expander("Action Plan"):
+                st.write("**Inspection:**")
+                st.text(r.get("inspection_steps"))
+                st.write("**Fix:**")
+                st.text(r.get("maintenance_actions"))
         else:
-            try:
-                with st.spinner("Calling Azure OpenAI to generate recommendations..."):
-                    recs = generate_ai_recommendations(
-                        events,
-                        endpoint=endpoint,
-                        api_key=api_key,
-                        deployment=deployment,
-                    )
-                st.success(
-                    f"Generated {len(recs)} recommendations and saved to ai_recommendations.csv."
-                )
-            except Exception as e:
-                st.error(f"Error generating recommendations: {e}")
+            st.info("No AI analysis generated for this event yet.")
 
-    # --- Show AI recs for selected event ---
-    if not recs.empty and "event_id" in recs.columns:
-        er = recs[recs["event_id"] == selected_id_int]
-        if not er.empty:
-            er = er.iloc[0]
-            st.markdown(f"## AI Plan for Event {int(er['event_id'])}")
-            st.write(
-                f"Axis: {er.get('axis', 'N/A')} | Severity: {er.get('severity', 'N/A')} | "
-                f"Collision type: {er.get('collision_type', 'N/A')}"
-            )
+    # Azure Config Section (Bottom)
+    st.divider()
+    with st.expander("⚙️ Admin / API Settings"):
+        c1, c2, c3 = st.columns(3)
+        # Defaults from .env so we don't have to type it every time
+        endpoint = c1.text_input("Endpoint", value=os.getenv("AZURE_OPENAI_ENDPOINT", ""))
+        api_key = c2.text_input("Key", type="password", value=os.getenv("AZURE_OPENAI_API_KEY", ""))
+        deployment = c3.text_input("Deployment", value=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"))
 
-            st.markdown("### Diagnosis")
-            st.write(er.get("diagnosis", ""))
-
-            st.markdown("### Inspection Steps")
-            st.text(er.get("inspection_steps", ""))
-
-            st.markdown("### Maintenance Actions")
-            st.text(er.get("maintenance_actions", ""))
-
-            st.markdown("### Safety Clearance")
-            st.text(er.get("safety_clearance", ""))
-
-            st.markdown("### Return to Service")
-            st.text(er.get("return_to_service", ""))
-        else:
-            st.info(
-                "No AI plan found for this event. "
-                "Either it is not high/critical severity or recommendations "
-                "have not been generated for this ID yet."
-            )
-    else:
-        st.info(
-            "No AI recommendations found. Configure Azure and click "
-            "'Generate AI recommendations for events'."
-        )
-
+        if st.button("Generate New Recommendations (High Severity Only)"):
+            if not api_key:
+                st.error("Need API Key!")
+            else:
+                with st.spinner("Querying Azure OpenAI..."):
+                    run_ai_analysis(events, endpoint, api_key, deployment)
+                st.success("Analysis complete! Reloading...")
+                st.rerun()
 
 if __name__ == "__main__":
     main()
