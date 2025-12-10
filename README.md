@@ -1,86 +1,77 @@
-# hackathonwtdr
-Trever Fuhrer | Will Vogt | Priyansh Dhiman | Arshdeep Singh
+# CSI Hackathon – Robot Collision Diagnostic Tool
 
-## Hackathon Robot Sensor Data Pipeline
+**Team:** Trever Fuhrer | Will Vogt | Priyansh Dhiman | Arshdeep Singh
 
 ## Overview
-This project cleans and structures raw robot sensor data (temperature, vibration, axis angles)...
+
+This project is an intelligent **Robot Diagnostic Dashboard** designed to reduce downtime in manufacturing environments. It ingests raw, unstructured robot logs and telemetry data, structures them into a unified "Event History," and uses **Azure OpenAI (5.1)** to automatically generate actionable maintenance plans for critical collision events.
+
+## Tech Stack
+
+**Frontend:** Streamlit (Python)  
+**Data Processing:** Pandas, Regex  
+**AI Model:** Azure OpenAI (GPT-5.1)  
+**Environment:** Python 3.9+
+
+## See it in Action
+
+![Program Demo](show.gif)
 
 ## How It Works
-- Reads raw CSV sensor data
-- Converts timestamps into standard format
-- Identifies missing values
-- Exports judge‑ready CSV and Excel files
 
-## Results
-Transparent dataset with 150 rows, ready for analysis and presentation.
+1. **Data Ingestion:** Operators upload raw files (Error Logs, System Alerts, Torque Timeseries, Sensor Readings).  
+2. **ETL Pipeline:** A Python script parses disparate text files and CSVs, merging them into a single, structured `events.csv`.  
+3. **Interactive Dashboard:** A Streamlit web app visualizes the data, highlighting **Critical** and **High** severity events.  
+4. **Generative AI Analysis:** The system sends high-severity event context to Azure OpenAI, which returns a structured JSON maintenance plan (Diagnosis, Inspection Steps, Maintenance Actions).
 
-# Executable code to run Sensor.py
-C:\Hackathon\.venv\Scripts\python.exe Clean_Sensor_Reading.py
+## Workflow
+
+To use the tool effectively:
+
+1. **Upload Data:** Drag and drop raw log files into the sidebar upload widget.  
+2. **Run Pipeline:** Click the **"Run Full Pipeline (ETL + AI)"** button. This parses the files and immediately queries the AI model for solutions.  
+3. **Triage:** Use the **Critical Alert Buttons** at the top of the dashboard to jump instantly to the most severe crashes.  
+4. **Resolve:** Read the AI-generated "Inspection Steps" and "Return to Service" plan to fix the robot.
+
+## Key Features
+
+### 1. Automated ETL & Parsing
+Instead of manually reading through thousands of lines of `error_logs.txt`, our pipeline automatically extracts:
+
+- **Timestamps & Locations:** When and where the crash happened (Axis/Joint).  
+- **Severity Classification:** Tags events as Critical, High, or Warning.  
+- **Contextual Data:** Correlates collision events with Peak Torque % and Sensor Alerts.
+
+### 2. Intelligent System Alerts
+The dashboard provides an immediate "triage" view for operators:
+
+- **Red "Critical" Buttons:** One-click access to the most severe crashes, organized in a control panel view.  
+- **Metric Cards:** Real-time counters for Total Events, Critical Errors, and AI-Generated Plans.
+
+### 3. AI-Driven Maintenance Plans
+We utilize Large Language Models (LLMs) to turn raw error codes into human-readable instructions.
+
+**Input:** Raw error message + Peak Torque + Last Maintenance Date  
+**AI Output:**
+
+- **Diagnosis:** Technical explanation of the fault (e.g., "Axis 3 collision detected with 145% rated torque").  
+- **Inspection Steps:** Bulleted list of hardware to check (e.g., "Inspect harmonic drive for backlash").  
+- **Return to Service:** Safety clearance steps to restart production.
 
 ## Performance Metrics
 
-After cleaning and validating the sensor dataset, we calculate performance metrics to evaluate both data quality and robot behavior. These metrics provide insights into how reliable the readings are and how the robot is performing under different conditions.
+- **Data Structured:** Successfully parsed unstructured text logs into a 100% structured dataframe.  
+- **Response Time:** AI Maintenance Plans are generated in <5 seconds per event.  
+- **Reliability:** Visualizes "Days Since Last Maintenance" alongside crash data to identify neglect-related failures.
 
-### 1. Data Quality
-- **Row count after cleaning** → shows how many valid readings remain.
-- **Missing values per column** → confirms that gaps were filled or handled.
-- **Outlier removal** → ensures unrealistic values (e.g., extreme temperatures or vibration spikes) are filtered out.
+## Usage
 
-### 2. Sensor Health
-- **Temperature (°C)**  
-  - Average, minimum, maximum, and standard deviation.  
-  - Demonstrates thermal stability and whether the robot stays within safe operating ranges.
+**To run the application:**
 
-- **Vibration (g-force)**  
-  - Average vibration level and peak spikes.  
-  - Indicates mechanical stability and potential issues with shaking or instability.
+```bash
+# 1. Activate environment
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 
-- **Axis Orientation (degrees)**  
-  - Average, minimum, and maximum values for Axis1, Axis2, and Axis3.  
-  - Shows how the robot’s orientation changes over time and whether it remains stable.
-
-### 3. Robot Performance Indicators
-- **Thermal stability** → Is the robot maintaining safe temperature ranges?  
-- **Mechanical stability** → Are vibration spikes rare or frequent?  
-- **Orientation control** → Are axis angles consistent or erratic?
-
-## System Alerts
-
-The system alerts module automatically scans the cleaned sensor dataset and raises warnings when performance metrics exceed safe thresholds. This ensures the robot can self‑diagnose issues and notify operators in real time.
-
-### Alert Rules
-- **Temperature**
-  - ⚠️ Triggered if `Temperature_C > 50 °C` (overheating).
-  - ⚠️ Triggered if `Temperature_C < 10 °C` (abnormally cold or sensor error).
-- **Vibration**
-  - ⚠️ Triggered if `Vibration_g > 0.3 g` (mechanical instability).
-- **Orientation**
-  - ⚠️ Triggered if any axis (`Axis1_deg`, `Axis2_deg`, `Axis3_deg`) exceeds 60° (unsafe tilt).
-- **Data Quality**
-  - ⚠️ Triggered if more than 5% of values are missing in the dataset.
-
-### Example Output
-If thresholds are breached: === System Alerts === ⚠️ Axis1_deg exceeded safe orientation range (>60°) ⚠️ More than 5% missing values in dataset
-If all readings are safe: === System Alerts === ✅ All systems stable
-
-### Purpose
-System alerts provide immediate feedback on robot health and data integrity. They make the pipeline production‑ready by ensuring unsafe conditions are flagged before further analysis or deployment.
-
-
-### Output
-The script prints a summary report in the console and can export results to CSV/Excel. This makes it easy to compare raw vs. cleaned data and demonstrate improvements in reliability.
-
-## Maintenance Notes
-
-The maintenance notes module converts system alerts into actionable recommendations for operators. Instead of only flagging unsafe conditions, it provides human‑readable guidance that can be logged for long‑term reliability.
-
-### Example Rules
-- **Overheating** → "Inspect cooling system; possible overheating."
-- **Abnormal cold readings** → "Check sensor calibration; abnormal low reading."
-- **Excessive vibration** → "Inspect mechanical joints; possible instability."
-- **Unsafe orientation** → "Check axis control; unsafe tilt detected."
-- **Data integrity issues** → "Review sensor wiring/logging; data integrity issue."
-
-### Example Output
-If issues are detected:
+# 2. Run Streamlit App
+streamlit run streamlit_app.py
+```
