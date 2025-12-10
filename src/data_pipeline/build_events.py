@@ -1,6 +1,7 @@
 from datetime import timedelta
 import json
 import os
+from typing import Union  # Added this import
 
 import pandas as pd
 
@@ -20,10 +21,14 @@ from src.config import (
 MAX_FORCE_N = 10_000.0  # acceptable range per spec; used as rated equivalent
 
 
-def _load_csv(path: str | bytes | "os.PathLike"):
+# FIXED: Changed type hint to use Union for compatibility
+def _load_csv(path: Union[str, bytes, "os.PathLike"]):
     try:
-        return pd.read_csv(path, parse_dates=["timestamp"], infer_datetime_format=True)
-    except FileNotFoundError:
+        # Check if file exists first to avoid pandas errors on missing files
+        if not os.path.exists(path):
+            return pd.DataFrame()
+        return pd.read_csv(path, parse_dates=["timestamp"])
+    except Exception:
         return pd.DataFrame()
 
 
@@ -202,7 +207,7 @@ def _classify_collision_type(row: pd.Series) -> str:
     return "other"
 
 
-def _compute_location(axis: int | float | None) -> str:
+def _compute_location(axis: Union[int, float, None]) -> str:
     try:
         ax = int(axis)
     except (TypeError, ValueError):
@@ -278,6 +283,11 @@ def build_events() -> pd.DataFrame:
         "interesting_error_rows": int(total_interesting),
         "dropped_missing_timestamp": dropped_missing_ts,
     }
+    
+    # Ensure directory exists before writing stats
+    if not VALIDATION_DIR.exists():
+        VALIDATION_DIR.mkdir(parents=True, exist_ok=True)
+        
     (VALIDATION_DIR / "event_build_stats.json").write_text(
         json.dumps(stats, indent=2), encoding="utf-8"
     )
